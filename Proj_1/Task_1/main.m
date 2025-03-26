@@ -9,12 +9,9 @@ clear all;  %clear workspace
 close all;  %close figures
 clc;
 %% Input parameters ******************************
-% SI-mm units used, rho does not matter
+% SI-mm units used, rho does not matter, everything already inside
 
 pbFC_name = 'my_pbFC';     % Points, bars, forces and boundary conditons
-A0=15;                  % Cross-section
-E0=210000;              % Young's modulus
-ro0=1;                  % Density
 
 %% Initialize EDACFEM ****************************
 pbFC = load(pbFC_name).pbFC;  %Load points, bars, forces and boundary conditons
