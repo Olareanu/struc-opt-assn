@@ -2,7 +2,7 @@
 %
 %   Structural Optimization 2025
 %   Olareanu Alexandru
-%   Proj 1 task 4
+%   Proj 1 task Bonus
 %
 %% ***********************************************
 clear all;  %clear workspace
@@ -60,43 +60,90 @@ mu = 0.5;
 % initialize
 i = 1;
 
+% Davidon's search, combination of slide 29, 28 and 35
+
+% Please end this suffering 
+
+G = eye(2);
+Df = sensitivity(x, dx, fem, opts)';
 
 while true
-    Df = sensitivity(x,dx,fem,opts);
-
-    %Stopping criteria
-    if (norm(Df)<=1e-6) || (i>=30)
+    % Stopping criteria
+    if (norm(Df) <= 1e-6) || (i >= 30)
         % Stop optimization loop
         break
     end
-
-    direction = -Df;
-    % Inexact line search - Armijo's rule
-    f_0 = Objective(x,fem,opts);
-    f_0_prime = (Objective((x+dx*direction),fem,opts)-f_0)/dx; % FD aprox fro f in search direction
-    alpha = 1;
     
-
-    while true % Bracketing high side
-        if Objective((x+alpha*eta*direction),fem,opts) > f_0 + alpha*rho*f_0_prime
+    % Step 1
+    direction = (-G * Df);
+    f_0 = Objective(x, fem, opts);
+    f_0_prime = (Objective((x + dx * direction'), fem, opts) - f_0) / dx;
+    
+    % Step 2
+    alpha_1 = 0;
+    f_1 = f_0;
+    f_1_prime = f_0_prime;
+    alpha_2 = 1;
+    beta = 1;
+    gamma = 0.9;
+    x_old = x;
+    f_2 = Objective(x + beta * direction', fem, opts);
+    f_2_prime = (Objective((x + (beta + dx) * direction'), fem, opts) - f_2) / dx;
+    
+    while true
+        if f_2_prime == 0
+            alpha_star = beta;
             break
+        end
+        
+        % Step 6
+        if (f_2 > f_0) || (f_2_prime > 0)
+            % Step 7
+            A = [alpha_1^3      alpha_1^2       alpha_1 1;
+                 3*alpha_1^2    2*alpha_1       1       0;
+                 alpha_2^3      alpha_2^2       alpha_2 1;
+                 3*alpha_2^2    2*alpha_2       1       0];
+            fit_factors = [f_1;  f_1_prime;  f_2;    f_2_prime];
+            cube = A\fit_factors;
+            
+            % Step 8
+            alpha = (-cube(2) + sqrt(cube(2)^2 - 3*cube(1)*cube(3))) / (3*cube(1));
+            f_alpha = Objective(x + alpha * direction', fem, opts);
+            f_alpha_prime = (Objective((x + (alpha + dx) * direction'), fem, opts) - f_alpha) / dx;
+            
+            % Step 9
+            if (f_alpha_prime >= gamma * f_0_prime) || (f_alpha_prime == 0)
+                alpha_star = alpha;
+                break
+            end
+            
+            % Step 10
+            if f_alpha_prime > 0
+                alpha_1 = 0;
+                alpha_2 = alpha;
+                beta = alpha;
+                f_2 = f_alpha;
+                f_2_prime = f_alpha_prime;
+            else
+                alpha_1 = alpha;
+                alpha_2 = beta;
+                f_1 = f_alpha;
+                f_1_prime = f_alpha_prime;
+            end
         else
-            alpha = eta*alpha;
+            beta = 2 * beta;
+            alpha_2 = beta;
+            f_2 = Objective(x + beta * direction', fem, opts);
+            f_2_prime = (Objective((x + (beta + dx) * direction'), fem, opts) - f_2) / dx;
         end
     end
-
-
-    alpha_hat = alpha;
-    j = 1;
-    while true % Armijo's rule
-        alpha = mu^j * alpha_hat;
-        if Objective((x+alpha*direction),fem,opts) <= f_0 + alpha*rho*f_0_prime
-            x = x+alpha*direction;
-            break
-        else
-            j = j+1;
-        end
-    end
+    
+    x = x + alpha_star * direction';
+    Df_old = Df;
+    Df = sensitivity(x, dx, fem, opts)';
+    gam = Df - Df_old;
+    delta = (x - x_old)';
+    G = G + (1 + (gam' * G * gam) / (delta' * gam)) * (delta * delta') / (delta' * gam) - ((delta * gam' * G + G * gam * delta') / (delta' * gam)); 
     
     % Store the current x and f in history arrays
     xHistory = [xHistory; x];
@@ -104,7 +151,6 @@ while true
     
     % Print the current state
     fprintf('%-11d\t%-12.4f\t%-12.4f\t%-12.4f\n', i, x(1), x(2), f_0);
-
 
     i = i + 1;
 end
