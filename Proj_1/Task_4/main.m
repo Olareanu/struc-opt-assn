@@ -2,7 +2,7 @@
 %
 %   Structural Optimization 2025
 %   Olareanu Alexandru
-%   Proj 1 task 3
+%   Proj 1 task 4
 %
 %% ***********************************************
 clear all;  %clear workspace
@@ -27,7 +27,7 @@ switch_outputMode = 'silent'; %'verbose', 'silent'
 
 
 
-%% Compute sensitivities *************************
+%% Task 3 dx estimation **************************
 
 
 x_matrix=[-500 -500 ; 500 500; -500 500; 500 -500; 0 0]'; % x1 to x5
@@ -41,13 +41,101 @@ end
 dx = double(sqrt(max_error / abs(Objective(x_matrix(:,i_max_error)',fem,opts))));
 
 
+%% Task 4 Optimization
 
-x0 = [200, 100];
+% initial point
+x = [0,0];
 
-s = sensitivity(x0,dx,fem,opts);
-format long e
-disp('Sensitivitys for x0 = [200, 100]:')
-disp(s)
+% History arrays
+xHistory = [];
+FHistory = [];
+
+% Initialize the console output with a header
+disp('Iteration    Current x1    Current x2    Current f');
+
+% hyperparameters
+eta = 2;
+rho = 0.2;
+mu = 0.5;
+% initialize
+stop = false;
+i = 1;
+
+
+while true
+    Df = sensitivity(x,dx,fem,opts);
+
+    %Stopping criteria
+    if (norm(Df)<=1e-6) || (i>=30)
+        % Stop optimization loop
+        break
+    end
+
+    direction = -Df;
+    % Inexact line search - Armijo's rule
+    f_0 = Objective(x,fem,opts);
+    f_0_prime = (Objective((x+dx*direction),fem,opts)-f_0)/dx; % FD aprox fro f in search direction
+    alpha = 1;
+    
+
+    while true % Bracketing high side
+        if Objective((x+alpha*eta*direction),fem,opts) > f_0 + alpha*rho*f_0_prime
+            break
+        else
+            alpha = eta*alpha;
+        end
+    end
+
+
+    alpha_hat = alpha;
+    j = 1;
+    while true % Armijo's rule
+        alpha = mu^j * alpha_hat;
+        if Objective((x+alpha*direction),fem,opts) <= f_0 + alpha*rho*f_0_prime
+            x = x+alpha*direction;
+            break
+        else
+            j = j+1;
+        end
+    end
+    
+    % Store the current x and f in history arrays
+    xHistory = [xHistory; x];
+    FHistory = [FHistory; f_0];
+    
+    % Print the current state
+    fprintf('%-11d\t%-12.4f\t%-12.4f\t%-12.4f\n', i, x(1), x(2), f_0);
+
+
+    i = i + 1;
+end
+
+x_optimal = x;
+f_optimal = Objective(x_optimal,fem,opts);
+
+disp('x optimal:')
+disp(x_optimal)
+disp('f(x) optimal:')
+disp(f_optimal)
+
+
+% Plot History (as task 2)
+figure;
+subplot(2,1,1);
+plot(1:length(FHistory), FHistory, 'o-');
+title('Objective Function');
+xlabel('iter');
+ylabel('f(x)');
+
+subplot(2,1,2);
+plot(1:length(xHistory), xHistory(:,1), 'o-', 'DisplayName', 'x_1');
+hold on;
+plot(1:length(xHistory), xHistory(:,2), 's-', 'DisplayName', 'x_2');
+title('x Values');
+xlabel('iter');
+ylabel('x Values');
+legend('show');
+
 
 
 %% Compute Sensitivity with first order FD

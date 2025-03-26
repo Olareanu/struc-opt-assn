@@ -2,7 +2,7 @@
 %
 %   Structural Optimization 2025
 %   Olareanu Alexandru
-%   Proj 1 task 1
+%   Proj 1 task 2
 %
 %% ***********************************************
 clear all;  %clear workspace
