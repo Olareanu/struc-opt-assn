@@ -2,7 +2,7 @@
 %
 %   Structural Optimization 2025
 %   Olareanu Alexandru
-%   Proj 2 task 3
+%   Proj 2 task 4
 %
 %% **********************************************
 clear all;  %clear workspace
@@ -11,45 +11,49 @@ clc;
 %% Input parameters *****************************
 % Dimensions follow the naming convention of the diagram
 
+% Load pre-computed data for surrogate models
 load results.mat
-n = size(results,1);
+load weightsDisp.mat
+load weightsMises.mat
 
-% init empty matrixes and vectors
-featureMatrix = zeros(n,6);
-feDisp = zeros(n,1);
-feMises = zeros(n,1);
+% Define the objective function (panel volume to be minimized)
+fun = @(x)panel_volume(x(1),x(2));
 
-% fill matrixes and vectors with data from table
-for i = 1:n
-    tp = results.tp{i};
-    hs = results.hs{i};
-    featureMatrix(i,:) = [tp,hs,tp^2,hs^2,tp*hs,1];
-    feDisp(i) = results.maxDisplacement{i};
-    feMises(i) = results.maxVonMises{i};
-end
+% Set optimization parameters
+x0 = [5, 50];        % Initial values for [panel thickness, stiffener height]
+lowerBound = [5, 50];        % Lower bounds for [tp, hs]
+upperBound = [20, 120];      % Upper bounds for [tp, hs]
 
-weigthsDisp = featureMatrix\feDisp;
-weigthsMises = featureMatrix\feMises;
-% weigthsDisplacement = lsqr(featureMatrix,FE_displacement);
-% weigthsMises = lsqr(featureMatrix,FE_mises,1e-8,100);
+% Define constraints for displacement and stress
+nonlcon = @(x)constraints(x(1),x(2),weigthsDisplacement,weigthsMises);
 
+% Configure optimization options
+options = optimoptions(@fmincon,...
+                      'Algorithm', 'interior-point',...
+                      'Display', 'iter-detailed',...
+                      'MaxIterations', 1500,...
+                      'PlotFcn', 'optimplotfval');
 
-save weightsDisp.mat weigthsDisp
-save weightsMises.mat weigthsMises
+% Run optimization using fmincon
+[x, fval] = fmincon(fun, x0, [], [], [], [], lowerBound, upperBound, nonlcon, options);
 
+% Extract optimal design parameters
+tp_opt = x(1);       % Optimal panel thickness (mm)
+hs_opt = x(2);       % Optimal stiffener height (mm)
+V_opt = fval;        % Resulting minimum volume (mm^3)
 
-% Original Response:
-tpOriginal = 10;
-hsOriginal = 90;
-[maxDisplacementFE,maxVonMisesFE,~] = feComputation(tpOriginal,hsOriginal,true);
+% Evaluate performance at optimal design point
+% Using surrogate models
+maxDisplacementSurr = surrogate(tp_opt, hs_opt, weigthsDisplacement);
+maxVonMisesSurr = surrogate(tp_opt, hs_opt, weigthsMises);
 
-% Surrogate Model:
-maxDisplacementSurrogate = surrogate(tpOriginal,hsOriginal,weigthsDisp);
-maxVonMisesSurrogate = surrogate(tpOriginal,hsOriginal,weigthsMises);
+% Verify with FE Model
+[maxDisplacementFE, maxVonMisesFE, ~] = feComputation(tp_opt, hs_opt, true);
 
-
-disp("Max disp: FE: " + num2str(maxDisplacementFE) + " mm, surr: " + num2str(maxDisplacementSurrogate) + " mm")
-disp("Max mises: FE: " + num2str(maxVonMisesFE) + " MPa, surr: " + num2str(maxVonMisesSurrogate) + " MPa")
+% Display optimization results
+disp("Optimum found at t_p = " + num2str(tp_opt) + " mm and h_s = " + num2str(hs_opt) + " mm with V = " + num2str(fval) + "mm^3")
+disp("Maximum displacement: FE: " + num2str(maxDisplacementFE) + " mm, Surrogate: " + num2str(maxDisplacementSurr) + " mm")
+disp("Maximum von Mises: FE: " + num2str(maxVonMisesFE) + " MPa, Surrogate: " + num2str(maxVonMisesSurr) + " MPa")
 
 
 %% **********************************************
@@ -59,6 +63,23 @@ function value = surrogate(tp,hs,weights)
         value = [tp,hs,tp^2,hs^2,tp*hs,1] * weights;
     end
 
+
+function [const, snedOver] = constraints(tp,hs,weightsDisplacement,weightsMises)
+    const = [surrogate(tp,hs,weightsDisplacement)-3;
+        surrogate(tp,hs,weightsMises)-150];
+    snedOver = [];
+    end
+
+% compute pannel volume
+function pannelVolume = panel_volume(tp,hs)
+
+    L = 1000;
+    W = 1000;
+    bs = 5;
+
+    pannelVolume = L*W*tp + 4*L*hs*bs;
+    
+end
 
 %% **********************************************
 
