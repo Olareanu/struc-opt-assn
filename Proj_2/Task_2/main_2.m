@@ -2,7 +2,7 @@
 %
 %   Structural Optimization 2025
 %   Olareanu Alexandru
-%   Proj 2 task 1
+%   Proj 2 task 2
 %
 %% **********************************************
 clear all;  %clear workspace
@@ -10,22 +10,33 @@ close all;  %close figures
 clc;
 %% Input parameters *****************************
 % Dimensions follow the naming convention of the diagram
-tp = 20;
-hs = 60;
 
-% Compute panel volume:
-L = 1000;
-W = 1000;
-bs = 5;
+n = 5;
 
-pannelVolume = L*W*tp + 4*L*hs*bs;
-disp("Volume: " + num2str(pannelVolume) + " mm^3")
+tpSweep = linspace(5,20,n);
+hsSweep = linspace(50,120,n);
 
-% Compute max disp and vonMieses
-[maxDisplacement, maxVonMises,~] = feComputation(tp,hs,true);
-disp("Maximum displacement: " + num2str(maxDisplacement) + " mm")
-disp("Maximum von Mises stress: " + num2str(maxVonMises) + " MPa")
+results = table;
 
+for i = 1:n
+    tp = tpSweep(i);
+    for j = 1:n
+        disp("Running sim nr " + num2str((n)*(i-1) + j) + " out of " + num2str(n^2))
+
+        hs = hsSweep(j);
+        [maxDisplacement, maxVonMises,~] = feComputation(tp,hs,false);
+        results.tp{n*(i-1)+j} = tp;
+        results.hs{n*(i-1)+j} = hs;
+        
+        results.maxDisplacement{n*(i-1)+j} = maxDisplacement;
+        results.maxVonMises{n*(i-1)+j} = maxVonMises;
+    end
+end
+
+save('results.mat', 'results')
+
+% CSV format
+writetable(results, 'results.csv')
 
 %% **********************************************
 
