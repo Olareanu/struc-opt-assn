@@ -22,6 +22,7 @@ function Plot_Structure(h,p,b,A,caption,fval,size_fact,eps,locsup1,locsup2,locf)
         plot(p(locsup2,1),p(locsup2,2),'bo','MarkerFaceColor','b',MarkerSize=10);
         plot(p(locf,1),p(locf,2),'ro','MarkerFaceColor','r',MarkerSize=10);
     end
+    axis([-3 8 -1 12]);
 
     title(append(caption,' ',num2str(fval)));
     %title([caption ' ' num2str(fval)]); 

@@ -88,3 +88,12 @@ fprintf('\nDisplacements at load nodes:\n')
 table(locf, U(locf),'VariableNames',{'DOF', 'Displacement'})
 
 
+% Find the node indices for visualization (convert from DOFs back to node numbers)
+locsup_nodes = unique(ceil(locsup/2));
+locf_node = unique(ceil(locf/2));
+
+% Visualization parameters
+size_factor = 5;       % Adjust based on your model
+eps_threshold = 1e-3;  % Threshold for which bars to display
+
+Plot_Structure(3, p_deformed, b, A, 'Optimized Structure - Volume:', 1, size_factor, eps_threshold, locsup_nodes(1), locsup_nodes(2), locf_node);
