@@ -24,7 +24,6 @@ p_keep=[0,0;0,2;2,0;2,2;0,0.5;0,1.5;2,yf];  %Points that are always kept in the 
 patch( 'vertices', p, 'faces', t, 'facecolor', [.9, .9, .9] )
 title('Initial Mesh');
 axis equal
-axis([-3 8 -1 12]);
 
 
 %% Boundary conditions ****************************
@@ -71,14 +70,6 @@ fprintf('Minimum volume: %f\n', fval);
 % Compute the optimized structure
 [p_deformed_opt, Sigma_opt, N_opt] = computeFe(p, t, b, L, locf, locsup, A_optimal);
 
-% Visualize optimized structure
-figure();
-patch('vertices', p_deformed_opt, 'faces', t, 'facecolor', [.9, .9, .9]);
-title('Deformed Mesh');
-axis equal;
-axis([-3 8 -1 12]);
-
-
 % Print optimized cross-sectional areas and stresses
 fprintf('\nOptimized cross-sectional areas and stresses:\n');
 member_indices = (1:length(Sigma_opt))';
@@ -93,39 +84,84 @@ locsup_nodes = unique(ceil(locsup/2));
 locf_node = unique(ceil(locf(1)/2));
 
 % Plot initial structure
-Plot_Structure(3, p, b, A_initial, 'Initial Structure - Volume:', sum(L.*A_initial), .1, 1e-3, locsup_nodes(1), locsup_nodes(2), locf_node);
+Plot_Structure(3, p, b, A_optimal, 'Optimized Structure (Undeformed) - Volume:', fval, 5, 0.1, locsup_nodes(1), locsup_nodes(2), locf_node);
 
 % Plot optimized structure
-Plot_Structure(4, p_deformed_opt, b, A_optimal, 'Optimized Structure - Volume:', fval, 5, 0.1, locsup_nodes(1), locsup_nodes(2), locf_node);
+Plot_Structure(4, p_deformed_opt, b, A_optimal, 'Optimized Structure (Deformed) - Volume:', fval, 5, 0.1, locsup_nodes(1), locsup_nodes(2), locf_node);
 
 
 
 
+%% Fully Stressed Design to compare **************
+fprintf('\n\n========== Fully Stressed Design ==========\n');
 
-% Create new figure
-newFig = figure;
+% Initial design
+A_fsd = 10*ones(size(b,1),1);  % Initial cross-section areas
+max_iter = 20;                 % Maximum iterations
+tol = 1e-4;                    % Convergence tolerance
+sigma_y = 1;                   % Yield stress
 
-% Define layout: 2 rows, 2 columns
-rows = 2;
-cols = 2;
+% Iteration history
+A_history = zeros(length(A_fsd), max_iter+1);
+A_history(:,1) = A_fsd;
 
-% Loop through figures 1 to 4
-for k = 1:4
-    % Get handle to existing figure and its axes
-    oldFig = figure(k);
-    oldAx = findall(oldFig, 'type', 'axes');
-
-    % Create subplot in new figure
-    newAx = subplot(rows, cols, k, 'Parent', newFig);
-    grid on;
-
-    % Copy all axes objects to the new subplot
-    for ax = flipud(oldAx')  % Flip to preserve visual order
-        newCopiedAx = copyobj(ax, newFig);
-        set(newCopiedAx, 'Position', get(newAx, 'Position'));
-        delete(newAx);  % Delete placeholder subplot
+% FSD iteration
+for iter = 1:max_iter
+    % Calculate stresses
+    [p_deformed_fsd, Sigma_fsd, N_fsd] = computeFe(p, t, b, L, locf, locsup, A_fsd);
+    
+    % Calculate new areas
+    A_new = abs(N_fsd) / sigma_y;
+    
+    % Update areas (with relaxation to improve convergence)
+    relax = 0.5;  % Relaxation factor
+    A_fsd = relax*A_new + (1-relax)*A_fsd;
+    
+    % Apply lower bound to prevent zero areas
+    A_fsd = max(A_fsd, 1e-6);
+    
+    % Store history
+    A_history(:,iter+1) = A_fsd;
+    
+    % Check convergence
+    change = norm(A_new - A_fsd) / norm(A_fsd);
+    volume = sum(L .* A_fsd);
+    
+    fprintf('Iteration %d: Volume = %.6f, Max change = %.6f\n', iter, volume, change);
+    
+    if change < tol
+        fprintf('FSD converged after %d iterations\n', iter);
+        break;
     end
 end
+
+% Final calculation with optimized areas
+[p_deformed_fsd, Sigma_fsd, N_fsd] = computeFe(p, t, b, L, locf, locsup, A_fsd);
+volume_fsd = sum(L .* A_fsd);
+
+fprintf('\nFully Stressed Design Results:\n');
+fprintf('Final volume: %f\n', volume_fsd);
+
+% Print optimized cross-sectional areas and stresses
+fprintf('\nFSD cross-sectional areas and stresses:\n');
+member_indices = (1:length(Sigma_fsd))';
+table(member_indices, A_fsd, Sigma_fsd, N_fsd, 'VariableNames', {'Member', 'Area', 'Stress', 'Force'})
+
+% Plot FSD structure
+Plot_Structure(5, p, b, A_fsd, 'FSD Structure (Undeformed) - Volume:', volume_fsd, 5, 0.1, locsup_nodes(1), locsup_nodes(2), locf_node);
+Plot_Structure(6, p_deformed_fsd, b, A_fsd, 'FSD Structure (Deformed) - Volume:', volume_fsd, 5, 0.1, locsup_nodes(1), locsup_nodes(2), locf_node);
+
+
+
+
+
+
+% Compare fmincon and FSD results
+fprintf('\nComparison of optimization results:\n');
+fprintf('fmincon volume: %.6f\n', fval);
+fprintf('FSD volume: %.6f\n', volume_fsd);
+fprintf('Difference: %.6f (%.2f%%)\n', volume_fsd - fval, 100*(volume_fsd - fval)/fval);
+
 
 
 
@@ -140,15 +176,15 @@ end
 
 %% Stress Constraint Function *********************
 function [c, ceq] = stressConstraints(p, t, b, L, locf, locsup, A)
-    % Calculate stresses for the current design
-    [~, Sigma, ~] = computeFe(p, t, b, L, locf, locsup, A);
-    
-    Sigma_y = 1;  % Yield stress
+% Calculate stresses for the current design
+[~, Sigma, ~] = computeFe(p, t, b, L, locf, locsup, A);
 
-    c = abs(Sigma) - Sigma_y; % Inequality constraints: stress must be less than yield stress
+Sigma_y = 1;  % Yield stress
 
-    % No equality constraints
-    ceq = [];
+c = abs(Sigma) - Sigma_y; % Inequality constraints: stress must be less than yield stress
+
+% No equality constraints
+ceq = [];
 end
 
 
@@ -190,10 +226,10 @@ end
 
 %% Volume as Objective Function *********************
 function V = calculateVolume(L, A)
-    
-    % Check that L and A have the same size
-    assert(length(L) == length(A), 'Length vectors L and A must have the same size');
-    
-    % Calculate volume of each bar and sum
-    V = sum(L .* A);
+
+% Check that L and A have the same size
+assert(length(L) == length(A), 'Length vectors L and A must have the same size');
+
+% Calculate volume of each bar and sum
+V = sum(L .* A);
 end
