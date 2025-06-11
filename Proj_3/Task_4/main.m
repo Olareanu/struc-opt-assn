@@ -14,7 +14,13 @@ clc;
 h0 = 0.5;
 yf = 1;
 
+% Measure execution time
+tic;  % Start timer
 [V_optimal, A_optimal] = optimizeTruss(h0, yf);
+elapsed_time = toc;  % Stop timer
+
+% Print the elapsed time
+fprintf('Time taken to run optimizeTruss: %.2f seconds\n', elapsed_time);
 
 
 
@@ -56,7 +62,8 @@ A_initial = 10*ones(size(b,1),1);  % Initial cross-section areas
 objectiveFunction = @(A) calculateVolume(L, A);
 
 % Options for fmincon
-options = optimoptions('fmincon', 'Display', 'iter', 'Algorithm', 'sqp');
+options = optimoptions('fmincon', 'Display', 'iter', 'Algorithm', 'sqp', 'MaxFunctionEvaluations', 1e5, ...
+    'SpecifyObjectiveGradient', true);
 
 % Create nonlinear constraint function for stress limits
 nonlcon = @(A) stressConstraints(p, t, b, L, locf, locsup, A);
@@ -69,7 +76,7 @@ b_eq = [];
 
 % For now, just use wide bounds to ensure positive areas
 lb = 1e-6*ones(size(A_initial));  % Lower bound
-ub = 100*ones(size(A_initial));   % Upper bound
+ub = 20*ones(size(A_initial));   % Upper bound
 
 % Run optimization
 [A_optimal, fval] = fmincon(objectiveFunction, A_initial, A_ineq, b_ineq, A_eq, b_eq, lb, ub, nonlcon, options);
@@ -85,7 +92,7 @@ fprintf('Minimum volume: %f\n', fval);
 fprintf('\nOptimized cross-sectional areas and stresses for both load cases:\n');
 member_indices = (1:length(Sigma_opt1))';
 table(member_indices, A_optimal, N_opt1, Sigma_opt1, N_opt2, Sigma_opt2, ...
-      'VariableNames', {'Member', 'Area', 'Force_LC1', 'Stress_LC1', 'Force_LC2', 'Stress_LC2'})
+    'VariableNames', {'Member', 'Area', 'Force_LC1', 'Stress_LC1', 'Force_LC2', 'Stress_LC2'})
 
 % Find the node indices for visualization (convert from DOFs back to node numbers)
 locsup_nodes = unique(ceil(locsup/2));
@@ -205,11 +212,10 @@ end
 
 
 %% Volume as Objective Function *********************
-function V = calculateVolume(L, A)
-
-% Check that L and A have the same size
-assert(length(L) == length(A), 'Length vectors L and A must have the same size');
-
-% Calculate volume of each bar and sum
+function [V, gradV] = calculateVolume(L, A)
+% Objective function
 V = sum(L .* A);
+
+% Gradient of the objective function
+gradV = L;
 end
