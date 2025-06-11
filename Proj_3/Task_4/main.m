@@ -85,8 +85,7 @@ fprintf('\nOptimization Results:\n');
 fprintf('Minimum volume: %f\n', fval);
 
 % Compute the optimized structure for both load cases
-[p_deformed_opt1, Sigma_opt1, N_opt1] = computeFe_1(p, t, b, L, locf, locsup, A_optimal);
-[p_deformed_opt2, Sigma_opt2, N_opt2] = computeFe_2(p, t, b, L, locf, locsup, A_optimal);
+[p_deformed_opt1, Sigma_opt1, N_opt1, p_deformed_opt2, Sigma_opt2, N_opt2] = computeFe(p, t, b, L, locf, locsup, A_optimal);
 
 % Print optimized cross-sectional areas and stresses for both load cases
 fprintf('\nOptimized cross-sectional areas and stresses for both load cases:\n');
@@ -113,8 +112,7 @@ end
 %% Stress Constraint Function *********************
 function [c, ceq] = stressConstraints(p, t, b, L, locf, locsup, A)
 % Calculate stresses for the current design
-[~, Sigma_1, ~] = computeFe_1(p, t, b, L, locf, locsup, A);
-[~, Sigma_2, ~] = computeFe_2(p, t, b, L, locf, locsup, A);
+[~, Sigma_1, ~, ~, Sigma_2, ~] = computeFe(p, t, b, L, locf, locsup, A);
 
 Sigma_y = 1;  % Yield stress
 
@@ -128,85 +126,68 @@ ceq = [];
 end
 
 
-%% FE Load 1 *************************************
-function [p_deformed, Sigma, N] = computeFe_1(p, t, b, L, locf, locsup, A)
+%% Unified FE Function for Both Load Cases *************************************
+function [p_deformed_1, Sigma_1, N_1, p_deformed_2, Sigma_2, N_2] = computeFe(p, t, b, L, locf, locsup, A)
 
 % FE Parameters
-Fx = 0;                   % Load in x-direction
-Fy = -2;                   % Load in y-direction
-E=1;                        %Young's modulus
+E = 1;  % Young's modulus
 
+% Load Case 1
+Fx1 = 0;   % Load in x-direction
+Fy1 = -2;  % Load in y-direction
 
-% FE Assembly and Solving
-n=size(p,1)*2;              %Full DOFs
-S=sparse(diag(E.*A./L));    %Local stiffness
+% Load Case 2
+Fx2 = 1;   % Load in x-direction
+Fy2 = 0;   % Load in y-direction
+
+% FE Assembly (done only once)
+n = size(p,1)*2;              % Full DOFs
+S = sparse(diag(E.*A./L));    % Local stiffness
 B = sparse(B_generator(p, b));
-Kg=B*S*B';                  %Full K
-K=Kg;
-K(locsup,:)=[];             %Remove constrained DOFs
-K(:,locsup)=[];             %Remove constrained DOFs
-f=sparse(zeros(n,1));       %Load vector
+Kg = B*S*B';                  % Full K
+K = Kg;
+K(locsup,:) = [];             % Remove constrained DOFs
+K(:,locsup) = [];             % Remove constrained DOFs
 
-% Apply different loads to x and y DOFs
-f(locf(1),:) = Fx;          % x-component load
-f(locf(2),:) = Fy;          % y-component load
+% Setup load vectors for both cases
+f1 = sparse(zeros(n,1));      % Load vector for case 1
+f1(locf(1),:) = Fx1;          % x-component load
+f1(locf(2),:) = Fy1;          % y-component load
+f1(locsup,:) = [];            % Remove constrained DOFs
 
+f2 = sparse(zeros(n,1));      % Load vector for case 2
+f2(locf(1),:) = Fx2;          % x-component load
+f2(locf(2),:) = Fy2;          % y-component load
+f2(locsup,:) = [];            % Remove constrained DOFs
 
-f(locsup,:)=[];             %Remove constrained DOFs
-u=K\f;
-B(locsup,:)=[];
-dl = -(B'*u);       %Member elongation
-N = E.*A./L.*dl;    %Member force
-Sigma=N./A;         %Member stress
+% Solve for both load cases
+u1 = K\f1;
+u2 = K\f2;
 
-% Merging displacements with supports *********************
-pr=1:n;
-pr(locsup)=[];
-U=sparse(zeros(n,1));
-U(pr,1)=u;
+% Remove constrained DOFs from B for both cases
+B_reduced = B;
+B_reduced(locsup,:) = [];
 
-p_deformed=[p(:,1)+U(1:2:n), p(:,2)+U(2:2:n)];
+% Compute member forces and stresses for both cases
+dl1 = -(B_reduced'*u1);       % Member elongation case 1
+N_1 = E.*A./L.*dl1;           % Member force case 1
+Sigma_1 = N_1./A;             % Member stress case 1
 
-end
+dl2 = -(B_reduced'*u2);       % Member elongation case 2
+N_2 = E.*A./L.*dl2;           % Member force case 2
+Sigma_2 = N_2./A;             % Member stress case 2
 
-%% FE Load 2 *************************************
-function [p_deformed, Sigma, N] = computeFe_2(p, t, b, L, locf, locsup, A)
+% Merge displacements with supports for both cases
+pr = 1:n;
+pr(locsup) = [];
 
-% FE Parameters
-Fx = 1;                   % Load in x-direction
-Fy = 0;                   % Load in y-direction
-E=1;                        %Young's modulus
+U1 = sparse(zeros(n,1));
+U1(pr,1) = u1;
+p_deformed_1 = [p(:,1)+U1(1:2:n), p(:,2)+U1(2:2:n)];
 
-
-% FE Assembly and Solving
-n=size(p,1)*2;              %Full DOFs
-S=sparse(diag(E.*A./L));    %Local stiffness
-B = sparse(B_generator(p, b));
-Kg=B*S*B';                  %Full K
-K=Kg;
-K(locsup,:)=[];             %Remove constrained DOFs
-K(:,locsup)=[];             %Remove constrained DOFs
-f=sparse(zeros(n,1));       %Load vector
-
-% Apply different loads to x and y DOFs
-f(locf(1),:) = Fx;          % x-component load
-f(locf(2),:) = Fy;          % y-component load
-
-
-f(locsup,:)=[];             %Remove constrained DOFs
-u=K\f;
-B(locsup,:)=[];
-dl = -(B'*u);       %Member elongation
-N = E.*A./L.*dl;    %Member force
-Sigma=N./A;         %Member stress
-
-% Merging displacements with supports *********************
-pr=1:n;
-pr(locsup)=[];
-U=sparse(zeros(n,1));
-U(pr,1)=u;
-
-p_deformed=[p(:,1)+U(1:2:n), p(:,2)+U(2:2:n)];
+U2 = sparse(zeros(n,1));
+U2(pr,1) = u2;
+p_deformed_2 = [p(:,1)+U2(1:2:n), p(:,2)+U2(2:2:n)];
 
 end
 
